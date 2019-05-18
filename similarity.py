@@ -128,17 +128,19 @@ def quantization(region):
     count_zero = counts[0]
     
     
-    
-    hist_r = np.histogram(image[:,:,0], bins = 8 )[0]
+    BINS = 25
+    hist_r = np.histogram(image[:,:,0], BINS, (0.0, 255.0))[0]
     hist_r[0] = hist_r[0]-count_zero
     
-    hist_g = np.histogram(image[:,:,1], bins = 8 )[0]
+    hist_g = np.histogram(image[:,:,1], BINS, (0.0, 255.0))[0]
     hist_g[0] = hist_g[0]-count_zero
     
-    hist_b = np.histogram(image[:,:,2], bins = 8 )[0]
+    hist_b = np.histogram(image[:,:,2], BINS, (0.0, 255.0))[0]
     hist_b[0] = hist_b[0]-count_zero       
     
     list_hist = np.concatenate((hist_r,hist_g,hist_b))
+    
+    list_hist = list_hist/len(image)
     
     return list_hist
 
@@ -147,11 +149,19 @@ def similarity_color(region1,region2):
     quan1 = quantization(region1) 
     quan2 = quantization(region2) 
     
-
+    
+    print(region1.label,"-",region2.label)
+    
+    print(region1.label," : ",quan1)
+    print(region2.label," : ",quan2)
+    
     minimum = np.minimum(quan1,quan2)
     sim_color = sum(minimum)
     
-
+    print('min : ',minimum)
+    print(region1.label,"-",region2.label," : ",sim_color) 
+    print("")
+    
     return sim_color
 
 def similarity_size(image1,image2,sizeImage):
