@@ -4,11 +4,15 @@ Created on Wed Apr 24 23:10:38 2019
 
 @author: user
 """
-
+import os
 import numpy as np
+import cv2
+import datetime
+import matplotlib.pyplot as plt
+
 from skimage.segmentation import find_boundaries
 from skimage import measure, color
-from skimage.segmentation import  felzenszwalb
+from skimage.segmentation import  felzenszwalb, slic, mark_boundaries
 
 
 from similarity import similarity_neighbor
@@ -16,31 +20,47 @@ from similarity import similarity_neighbor
 
 
 class Region():
-    def __init__(self,label,bbox,segmen_area):
+    def __init__(self,label,bbox,segmen_area,mask):
         self.label=label
         self.bbox=bbox
-        self.segmen = segmen_area
+        self.image = segmen_area
+        self.mask = mask
+        self.neighbor = []
         
         
 class selective_search():
     def __init__(self,image):
         
-        self.segmen = felzenszwalb(image, scale = 200, sigma=0.5, min_size = 50)
-    
+        #self.segmen = felzenszwalb(image, scale = 200, min_size = 200)
+        #self.segmen = felzenszwalb(image, scale = 2, sigma = 0.8, min_size = 200)
+        
+        
+      
+        self.segmen = slic(image, n_segments = 200, compactness = 10, sigma = 1)
+        
+        
         self.max_label = self.fix_label(self.segmen)
+        
+        
         
         self.sizeImage = image.shape[0]*image.shape[1]
         
-        self.hierarchy = []
-        self.img_hierarchy = []
+        self.matric_pair = np.zeros((self.max_label,self.max_label))
+        self.img_hierarchy = [np.copy(self.segmen)]
+        
+        self.list_region = []
+        self.list_neighbor_pair = []
+        self.boundingbox = []
+        self.image_crop = []
         
         
         
-        self.list_region , self.list_neighbor_pair = self.extract_region (self.segmen,image) 
         
-        self.list_similarity = self.similarity_neigh_pair(self.list_neighbor_pair, 
-                                                          self.list_region,
-                                                          self.segmen)
+        self.extract_region (self.segmen,image) 
+        
+        self.similarity_neigh_pair(self.list_neighbor_pair, 
+                                   self.list_region,
+                                   self.segmen)
         
         self.merge_region(image)
         
@@ -55,27 +75,41 @@ class selective_search():
         return count_label
     
     def extract_region (self,segmen,image):
+        
+        print("ekstrak region .... ")
         list_region = []
         list_neighbor_pair = []
+        list_bounding = []
+        list_image = []
         
         for region in measure.regionprops(segmen):
             img_segmen = color.gray2rgb(region.image) * image[
                     region.bbox[0]:region.bbox[2],
                     region.bbox[1]:region.bbox[3]]
             
-            self.hierarchy.append(region.label)
-            r = Region(region.label,region.bbox,img_segmen)
+            list_bounding.append(region.bbox)
+            list_image.append(self.crop_image(image,region.bbox))
+            r = Region(region.label,region.bbox,img_segmen,region.image)
             
             list_neighbor_pair = list_neighbor_pair + self.get_neighbor(segmen,r)
             
             list_region.append(r)
         
-        return np.array(list_region),np.array(list_neighbor_pair)
+        print("ekstrak region selesai.... \n")
         
-    def get_neighbor(self,segmen,region):
-        label_region = region.label
-        bbox_region = region.bbox
+        self.list_region = np.array(list_region)
+        self.list_neighbor_pair = np.array(list_neighbor_pair)
+        self.boundingbox = list_bounding
+        self.image_crop = list_image
+        
+        
+        
+    def get_neighbor(self,segmen,reg_):
+        label_region = reg_.label
+        bbox_region = reg_.bbox
         neighbor_list = []
+        
+        
         
         min_y, min_x, max_y, max_x =  bbox_region
         
@@ -104,12 +138,45 @@ class selective_search():
         neighbor = np.where(neighbor == 1)
         neighbor = np.unique(region[neighbor])
         
-        
         for j in neighbor:
             if j != label_region:
+                reg_.neighbor.append(j)
                 neighbor_list.append([label_region,j])
         
         return neighbor_list
+    
+    def fast_get_neighbor(self,reg_i,reg_j,rt_label):
+        neigh_i = reg_i.neighbor
+        neigh_j = reg_j.neighbor
+        
+        
+        
+        if( reg_i.label in neigh_j):
+            neigh_j.remove(reg_i.label)
+        
+        if ( reg_j.label in neigh_i):
+            neigh_i.remove(reg_j.label)
+            
+        new_neigh = neigh_i + neigh_j
+        
+        for k in new_neigh:
+            index = np.where(self.matric_pair[k-1] > 0)
+            
+            new_k_neigh = index[0] + 1 
+            
+            self.list_region[k-1].neighbor = new_k_neigh.tolist()
+        
+        
+        new_neigh = np.unique(new_neigh)
+        
+        if (len(new_neigh) > 0):
+            neigh_pair = np.zeros((len(new_neigh) , 2), dtype = int) 
+            neigh_pair[:,0] = rt_label
+            neigh_pair[:,1] = new_neigh
+            
+            new_neigh = neigh_pair 
+        
+        return new_neigh
 
     def mergebbox(self,bboxRegion1,bboxRegion2):
         r1_Ymin = bboxRegion1[0]
@@ -128,128 +195,173 @@ class selective_search():
         BBox_Xmax = max(r1_Xmax,r2_Xmax)
         BBox_Ymax = max(r1_Ymax,r2_Ymax)
         
-        return [BBox_Xmin,BBox_Ymin,BBox_Xmax,BBox_Ymax]
+        return [BBox_Ymin,BBox_Xmin,BBox_Ymax,BBox_Xmax]
     
     def similarity_neigh_pair(self,list_neighbor_pair,list_region,segmen ):
-        list_similarity = []
         for i in range(len(list_neighbor_pair)):
-            ri = list_region[ list_neighbor_pair[i][0] - 1 ] 
-            rj = list_region[ list_neighbor_pair[i][1] - 1 ] 
+            ri_index = list_neighbor_pair[i][0] - 1
+            rj_index = list_neighbor_pair[i][1] - 1
             
-            list_similarity.append( similarity_neighbor( ri,rj ,segmen ) )
-        return np.array(list_similarity)
-    
+            ri = list_region[ ri_index ] 
+            rj = list_region[ rj_index ] 
+            
+            #print('sim antara ri {} dan rj {} : {}'.format(ri.label,rj.label,similarity_neighbor( ri,rj ,segmen )))
+            self.matric_pair[ri_index ,rj_index] = similarity_neighbor( ri,rj ,segmen ) 
+        
+    def crop_image(self,image,bbox):
+        min_r, min_c, max_r, max_c = bbox 
+        
+        wrap = cv2.resize(image[min_r:max_r, min_c:max_c], dsize = (128,128), interpolation = cv2.INTER_CUBIC)
+        
+        return wrap
     def merge_region(self,image):
         
         
         segmen = self.segmen
 
-        list_similarity = self.list_similarity
-        list_neighbor_pair = self.list_neighbor_pair
-        list_region = self.list_region 
+
         max_label = self.max_label
         
-        temp_hierarchy = []
-        hierarchy = self.hierarchy
+
         
+        count = 0
         
-        while (len(list_similarity) > 0) :
+        max_sim = 1
+        
+        while (max_sim > 0) :
             
-            print(hierarchy)
-            max_index = np.argmax(list_similarity)
+
             
+            print("iter : ",count," Mencari max value sim ")
             
-            ri,rj = list_neighbor_pair[max_index][0],list_neighbor_pair[max_index][1]
+
+            ri_index,rj_index = np.unravel_index(self.matric_pair.argmax(), 
+                                                 self.matric_pair.shape)
             
-            neighbor_index = np.concatenate((
-                    np.where(list_neighbor_pair[:,0] == ri),
-                    np.where(list_neighbor_pair[:,0] == rj)),axis = 1 )
+            ri,rj = ri_index+1,rj_index+1
             
+#            print(ri,rj)
+
+            max_sim = self.matric_pair[ri_index,rj_index]
+
             
-            list_neighbor_pair = np.delete(list_neighbor_pair,neighbor_index[0],axis = 0)
-            
-            if( ri in hierarchy):
-                hierarchy.remove(ri)
-            
-            if( rj in hierarchy):
-                hierarchy.remove(rj)
-            
-            #print(type(self.hierarchy))
+            print("iter : ",count," delete region pair ")
             
             
-            list_similarity = np.delete(list_similarity,neighbor_index[0],axis = 0)
-            
-            other_neigh_index = np.concatenate((
-                    np.where(list_neighbor_pair[:,1] == ri),
-                    np.where(list_neighbor_pair[:,1] == rj)),axis = 1 )
-            
-            other_neigh = list_neighbor_pair[other_neigh_index[0]]
+            self.matric_pair[ri_index,:] = 0
+            self.matric_pair[rj_index,:] = 0
             
             
-            list_neighbor_pair = np.delete(list_neighbor_pair,other_neigh_index[0],axis = 0)
-            list_similarity = np.delete(list_similarity,other_neigh_index[0],axis = 0) 
+            print("iter : ",count," delete semilarity region pair ")
             
+            self.matric_pair[:,ri_index] = 0
+            self.matric_pair[:,rj_index] = 0
+            
+
+            
+            print("iter : ",count," delete  region pair milik tetangga")
+
             max_label = max_label + 1 
     
             rt_label = max_label
-            temp_hierarchy.append(rt_label)
-            
-            if(len(hierarchy) < 1 ):
-                hierarchy = temp_hierarchy
-                temp_hierarchy = []
-                
-                self.img_hierarchy.append(segmen)
             
             
-            rt_bbox =  self.mergebbox(list_region[ri-1].bbox,list_region[rj-1].bbox)
-            #segmen2 = np.copy(segmen)
+            print("iter : ",count," membuat rt ")
+            
+            rt_bbox =  self.mergebbox(self.list_region[ri-1].bbox,self.list_region[rj-1].bbox)
             
             
             
             segmen[segmen == ri ] = rt_label
             segmen[segmen == rj ] = rt_label
             
+            #percent = (self.max_label*10)//100
+            #if(percent % count == 0):
+            self.img_hierarchy.append(np.copy(segmen))
+            
             rt_image = np.copy(segmen[rt_bbox[0]:rt_bbox[2],rt_bbox[1]:rt_bbox[3]])
             rt_image[rt_image != rt_label ] = 0
             rt_image[rt_image == rt_label ] = 1
             
+            rt_mask = np.copy(rt_image)
             
             
             rt_image = color.gray2rgb(rt_image) * image[rt_bbox[0]:rt_bbox[2],rt_bbox[1]:rt_bbox[3]] 
             
-            r = Region(rt_label,rt_bbox,rt_image)
             
-            list_region = np.append(list_region,r)
+            r = Region(rt_label,rt_bbox,rt_image,rt_mask)
             
+            
+            
+            matric_x = self.matric_pair.shape[1]
+            self.matric_pair = np.append(self.matric_pair,
+                                         np.zeros((1,matric_x)) , axis = 0)
+            
+            
+            matric_y = self.matric_pair.shape[0]
+            self.matric_pair = np.append(self.matric_pair,
+                                         np.zeros((matric_y,1)) , axis = 1)
+            
+#            print("iter : ",count," mencari tetangga rt ")
+            
+         
             rt_neighbor = self.get_neighbor(segmen,r)
+#            rt_neighbor = self.fast_get_neighbor(self.list_region[ri_index],self.list_region[rj_index],rt_label)
+            
+           
             
             if(len(rt_neighbor) > 0):
-            
-                other_neigh = np.unique(other_neigh[:,0])
-                new_other_neigh = np.zeros((other_neigh.shape[0],2), dtype=int)
-                new_other_neigh[:,0] = other_neigh 
-                new_other_neigh[:,1] = rt_label  
                 
-                #print(max_label," : ", rt_neighbor,"\n",new_other_neigh)
+#                print("iter : ",count," menambahkan tetangga rt  ")
                 
-                new_neighbor = np.concatenate((rt_neighbor,new_other_neigh), axis = 0)
+#                r.neighbor = rt_neighbor[:,1].tolist()
                 
                 
-                new_sim = []
+                self.list_region = np.append(self.list_region,r)
+                self.boundingbox.append(rt_bbox)
+                self.image_crop.append(self.crop_image(image,r.bbox))
                 
-                for i in range(len(new_neighbor)):
+                
+                for i in range(len(rt_neighbor)):
+                    ri_index = rt_neighbor[i][0] - 1
+                    rj_index = rt_neighbor[i][1] - 1
                     
-                    ri = list_region[ new_neighbor[i][0] - 1 ] 
-                    rj = list_region[ new_neighbor[i][1] - 1 ] 
+                    ri = self.list_region[ ri_index ] 
+                    rj = self.list_region[ rj_index ] 
                     
-                    new_sim.append( similarity_neighbor( ri,rj ,segmen ) )
+                    self.matric_pair[ri_index,rj_index] =  similarity_neighbor( ri,rj ,segmen ) 
+                
                 
             
-                list_neighbor_pair = np.append(list_neighbor_pair,new_neighbor,axis = 0)
-                list_similarity = np.append(list_similarity,new_sim) 
+                print("iter : ",count," finish rt ")
+            else :
+                max_sim = 0
             
-            print(list_neighbor_pair)
-            print("")
+            
+            
+            
+            count = count + 1
+            
+    def save_boundaries(self,image):
+        currentDT = datetime.datetime.now()
+        
+        path  = currentDT.strftime("%Y-%m-%d_%H.%M.%S")
+        os.mkdir(path)
+         
+        for i in range (len(self.img_hierarchy)):
+            boundaries = mark_boundaries(image,self.img_hierarchy[i])
+            plt.imsave(path+"/segmen_{}.jpg".format(i),boundaries)
+    
+    def save_crop(self,image):
+        currentDT = datetime.datetime.now()
+        
+        path  = currentDT.strftime("%Y-%m-%d_%H.%M.%S")
+        os.mkdir(path+'_crop')
+         
+        for i in range (len(self.boundingbox)):
+            bbox = self.boundingbox[i]
+            gambar = image[bbox[0]:bbox[2],bbox[1]:bbox[3]]
+            plt.imsave(path+"_crop/segmen_{}.jpg".format(i),gambar)
 
-
+        
     
