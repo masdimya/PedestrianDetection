@@ -32,7 +32,7 @@ class selective_search():
     def __init__(self,image):
         
         #self.segmen = felzenszwalb(image, scale = 200, min_size = 200)
-        #self.segmen = felzenszwalb(image, scale = 2, sigma = 0.8, min_size = 200)
+#        self.segmen = felzenszwalb(image, scale = 1, sigma = 0.8, min_size = 500)
         
         
       
@@ -43,7 +43,7 @@ class selective_search():
         
         
         
-        self.sizeImage = image.shape[0]*image.shape[1]
+        self.sizeImage = image[:,:,0].shape
         
         self.matric_pair = np.zeros((self.max_label,self.max_label))
         self.img_hierarchy = [np.copy(self.segmen)]
@@ -56,7 +56,8 @@ class selective_search():
         
         
         
-        self.extract_region (self.segmen,image) 
+        self.extract_region (self.segmen,image)
+        
         
         self.similarity_neigh_pair(self.list_neighbor_pair, 
                                    self.list_region,
@@ -64,6 +65,10 @@ class selective_search():
         
         self.merge_region(image)
         
+        self.more_region(image,self.list_region)
+        
+        #self.save_boundaries(image)
+        self.save_crop(image)
         
     
     def fix_label (self,segmen) :
@@ -95,6 +100,7 @@ class selective_search():
             
             list_region.append(r)
         
+        print(len(list_region))
         print("ekstrak region selesai.... \n")
         
         self.list_region = np.array(list_region)
@@ -211,7 +217,7 @@ class selective_search():
     def crop_image(self,image,bbox):
         min_r, min_c, max_r, max_c = bbox 
         
-        wrap = cv2.resize(image[min_r:max_r, min_c:max_c], dsize = (128,128), interpolation = cv2.INTER_CUBIC)
+        wrap = cv2.resize(image[min_r:max_r, min_c:max_c], dsize = (64,128), interpolation = cv2.INTER_CUBIC)
         
         return wrap
     def merge_region(self,image):
@@ -341,6 +347,40 @@ class selective_search():
             
             
             count = count + 1
+    
+    def more_region(self,image,list_region):
+        
+        
+        
+        sizeimg = self.sizeImage[0] * self.sizeImage[1]
+        
+        
+        
+        for region in list_region:
+            regionsize = (np.sum(region.mask.astype(int)) / sizeimg ) *  100
+            
+            if regionsize > 40 and regionsize < 90:
+                
+                
+                matriks_one = np.full(self.sizeImage,1)
+                matriks_seg = np.zeros(self.sizeImage,dtype = int)
+                
+                matriks_seg[region.bbox[0]:region.bbox[2],region.bbox[1]:region.bbox[3]] = region.mask
+                new_seg = matriks_one - matriks_seg 
+                
+                label = measure.label(new_seg)
+                
+                for new_region in measure.regionprops(label):
+                    self.image_crop.append(self.crop_image(image,new_region.bbox))
+                    self.boundingbox.append(new_region.bbox)
+                
+         
+            
+        
+        
+        
+        
+        
             
     def save_boundaries(self,image):
         currentDT = datetime.datetime.now()
@@ -349,8 +389,13 @@ class selective_search():
         os.mkdir(path)
          
         for i in range (len(self.img_hierarchy)):
-            boundaries = mark_boundaries(image,self.img_hierarchy[i])
+            boundaries = mark_boundaries(cv2.cvtColor(image, cv2.COLOR_BGR2RGB),self.img_hierarchy[i])
             plt.imsave(path+"/segmen_{}.jpg".format(i),boundaries)
+        
+        os.mkdir(path+'_more')
+        for i in range (len(self.more)):
+            boundaries = mark_boundaries(cv2.cvtColor(image, cv2.COLOR_BGR2RGB),self.more[i])
+            plt.imsave(path+"_more/segmen_{}_more.jpg".format(i),boundaries)
     
     def save_crop(self,image):
         currentDT = datetime.datetime.now()
@@ -358,10 +403,9 @@ class selective_search():
         path  = currentDT.strftime("%Y-%m-%d_%H.%M.%S")
         os.mkdir(path+'_crop')
          
-        for i in range (len(self.boundingbox)):
-            bbox = self.boundingbox[i]
-            gambar = image[bbox[0]:bbox[2],bbox[1]:bbox[3]]
-            plt.imsave(path+"_crop/segmen_{}.jpg".format(i),gambar)
+        for i in range (len(self.image_crop)):
+            image = cv2.cvtColor(self.image_crop[i], cv2.COLOR_BGR2RGB)
+            plt.imsave(path+"_crop/segmen{}.jpg".format(i),image)
 
         
     
