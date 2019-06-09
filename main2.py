@@ -14,54 +14,69 @@ from skimage import measure, color
 from skimage.segmentation import  felzenszwalb,mark_boundaries, slic
 from selective_search import selective_search
 from cnn_model import cnn
+from bbox_operator import iou, non_max_suppression
+
+import glob
 
 
 def show_bbox(image,list_bbox):
-    fig = plt.figure()
-    ax = fig.add_subplot(111)
-    
-    ax.imshow(image)
 
+    image = cv2.cvtColor(image,cv2.COLOR_BGR2RGB)
+    
+    font_style = cv2.FONT_HERSHEY_DUPLEX
+    font_scale = 1
+    print(list_bbox)
+    bb_color = (255, 0, 0)
+    font_color = (255, 0, 0)
+    
     for bbox in list_bbox:
         minr, minc, maxr, maxc = bbox
-        rect = mpatches.Rectangle((minc, minr), maxc - minc, maxr - minr,
-                                      fill=False, edgecolor='red', linewidth=2)
-        ax.add_patch(rect)
+        w = maxc - minc
+        h = maxr - minr 
+        
+        cv2.rectangle(image, (minc, minr), (minc+w, minr+h),bb_color , 3)
+        
+        
+#        cv2.putText(image, 'human', (minc, minr), font_style, font_scale, 
+#                    font_color, lineType=cv2.LINE_AA)
+        
     
-    ax.set_axis_off()
-    plt.tight_layout()
+    plt.imshow(image)
     
+
     
-    plt.show()
 
 
-image = cv2.imread('coba_img/crop001522.png')
+image = cv2.imread('coba_img/00000110a.png')
 
+#bb = np.load('good.npy')
 
-'''  percobaan '''
-#image = plt.imread('percobaan2.jpg')
+#show_bbox(image,bb)
 
-segmen1 = felzenszwalb(image, scale = 2, sigma = 0.8, min_size = 200)
-segmen = slic(image, n_segments = 200, compactness = 10, sigma = 1)
+#    
+selective = selective_search(image)
+#print("finish process ..... ")
 
-stack = np.hstack((color.label2rgb(segmen1),color.label2rgb(segmen)))
-
-#plt.imshow(stack)
-
-
-''' percobaan '''
 
 
 ''' main '''
+    
 
-selective = selective_search(image)
+list_bbox = np.array(selective.boundingbox)
 
-#list_bbox = np.array(selective.boundingbox)
+list_img = selective.image_crop
 
-#list_img = selective.image_crop
+hasil, index, prob = cnn(list_img)
 
-#hasil, index = cnn(list_img)
-#show_bbox(image,list_bbox[index])
+#bbox = np.load('samplebbox.npy')
+#prob = npa.load('samplebprob.npy')
+
+
+
+
+arr = non_max_suppression(list_bbox[index],prob)
+
+show_bbox(image,arr)
 
 
 

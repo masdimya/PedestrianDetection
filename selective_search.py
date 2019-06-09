@@ -32,11 +32,11 @@ class selective_search():
     def __init__(self,image):
         
         #self.segmen = felzenszwalb(image, scale = 200, min_size = 200)
-#        self.segmen = felzenszwalb(image, scale = 1, sigma = 0.8, min_size = 500)
+        self.segmen = felzenszwalb(image, scale = 1, sigma = 0.8, min_size = 600)
         
         
       
-        self.segmen = slic(image, n_segments = 200, compactness = 10, sigma = 1)
+#        self.segmen = slic(image, n_segments = 200, compactness = 10, sigma = 1)
         
         
         self.max_label = self.fix_label(self.segmen)
