@@ -31,12 +31,16 @@ class Region():
 class selective_search():
     def __init__(self,image):
         
-        #self.segmen = felzenszwalb(image, scale = 200, min_size = 200)
-        self.segmen = felzenszwalb(image, scale = 1, sigma = 0.8, min_size = 600)
+        '''
+            felzenszwalb superpixel segmentation 
+        '''
+#        self.segmen = felzenszwalb(image, scale = 1, sigma = 0.8, min_size = 600)
         
-        
+        '''
+            slic superpixel segmentation 
+        '''
       
-#        self.segmen = slic(image, n_segments = 200, compactness = 10, sigma = 1)
+        self.segmen = slic(image, n_segments = 4, compactness = 10, sigma = 1)
         
         
         self.max_label = self.fix_label(self.segmen)
@@ -46,6 +50,8 @@ class selective_search():
         self.sizeImage = image[:,:,0].shape
         
         self.matric_pair = np.zeros((self.max_label,self.max_label))
+        self.neighbor_matric = np.zeros((self.max_label,self.max_label), dtype = bool)
+        
         self.img_hierarchy = [np.copy(self.segmen)]
         
         self.list_region = []
@@ -67,8 +73,8 @@ class selective_search():
         
         self.more_region(image,self.list_region)
         
-        #self.save_boundaries(image)
-        self.save_crop(image)
+        self.save_boundaries(image)
+#        self.save_crop(image)
         
     
     def fix_label (self,segmen) :
@@ -151,38 +157,20 @@ class selective_search():
         
         return neighbor_list
     
-    def fast_get_neighbor(self,reg_i,reg_j,rt_label):
-        neigh_i = reg_i.neighbor
-        neigh_j = reg_j.neighbor
+    def fast_get_neighbor(self,rt_label,i,j):
+        neighbor = self.neighbor_matric[:,i]+self.neighbor_matric[:,j]
+        
+        indices = np.where(neighbor == True)
+        
+        pair = np.zeros((len(indices[0]),2),dtype=int)
+        
+        pair[:,0] = rt_label
+        pair[:,1] = indices[0]+1
         
         
         
-        if( reg_i.label in neigh_j):
-            neigh_j.remove(reg_i.label)
         
-        if ( reg_j.label in neigh_i):
-            neigh_i.remove(reg_j.label)
-            
-        new_neigh = neigh_i + neigh_j
-        
-        for k in new_neigh:
-            index = np.where(self.matric_pair[k-1] > 0)
-            
-            new_k_neigh = index[0] + 1 
-            
-            self.list_region[k-1].neighbor = new_k_neigh.tolist()
-        
-        
-        new_neigh = np.unique(new_neigh)
-        
-        if (len(new_neigh) > 0):
-            neigh_pair = np.zeros((len(new_neigh) , 2), dtype = int) 
-            neigh_pair[:,0] = rt_label
-            neigh_pair[:,1] = new_neigh
-            
-            new_neigh = neigh_pair 
-        
-        return new_neigh
+        return pair
 
     def mergebbox(self,bboxRegion1,bboxRegion2):
         r1_Ymin = bboxRegion1[0]
@@ -212,7 +200,8 @@ class selective_search():
             rj = list_region[ rj_index ] 
             
             #print('sim antara ri {} dan rj {} : {}'.format(ri.label,rj.label,similarity_neighbor( ri,rj ,segmen )))
-            self.matric_pair[ri_index ,rj_index] = similarity_neighbor( ri,rj ,segmen ) 
+            self.matric_pair[ri_index ,rj_index] = similarity_neighbor( ri,rj ,segmen )
+            self.neighbor_matric[ri_index ,rj_index] = True
         
     def crop_image(self,image,bbox):
         min_r, min_c, max_r, max_c = bbox 
@@ -257,11 +246,16 @@ class selective_search():
             self.matric_pair[ri_index,:] = 0
             self.matric_pair[rj_index,:] = 0
             
+            self.neighbor_matric[ri_index,:] = False
+            self.neighbor_matric[rj_index,:] = False
+            
+            
             
             print("iter : ",count," delete semilarity region pair ")
             
             self.matric_pair[:,ri_index] = 0
             self.matric_pair[:,rj_index] = 0
+            
             
 
             
@@ -303,20 +297,31 @@ class selective_search():
             self.matric_pair = np.append(self.matric_pair,
                                          np.zeros((1,matric_x)) , axis = 0)
             
+            self.neighbor_matric = np.append(self.neighbor_matric,
+                                         np.zeros((1,matric_x) ,dtype = bool) , axis = 0)
+            
+            
+            
             
             matric_y = self.matric_pair.shape[0]
             self.matric_pair = np.append(self.matric_pair,
                                          np.zeros((matric_y,1)) , axis = 1)
+            self.neighbor_matric = np.append(self.neighbor_matric,
+                                         np.zeros((matric_y,1) ,dtype = bool) , axis = 1)
             
 #            print("iter : ",count," mencari tetangga rt ")
             
          
-            rt_neighbor = self.get_neighbor(segmen,r)
+#            rt_neighbor = self.get_neighbor(segmen,r)
+            fast_rt_neighbor = self.fast_get_neighbor(rt_label,ri_index,rj_index)
+            
+            
+            
 #            rt_neighbor = self.fast_get_neighbor(self.list_region[ri_index],self.list_region[rj_index],rt_label)
             
            
             
-            if(len(rt_neighbor) > 0):
+            if(len(fast_rt_neighbor) > 0):
                 
 #                print("iter : ",count," menambahkan tetangga rt  ")
                 
@@ -328,14 +333,15 @@ class selective_search():
                 self.image_crop.append(self.crop_image(image,r.bbox))
                 
                 
-                for i in range(len(rt_neighbor)):
-                    ri_index = rt_neighbor[i][0] - 1
-                    rj_index = rt_neighbor[i][1] - 1
+                for i in range(len(fast_rt_neighbor)):
+                    ri_index = fast_rt_neighbor[i][0] - 1
+                    rj_index = fast_rt_neighbor[i][1] - 1
                     
                     ri = self.list_region[ ri_index ] 
                     rj = self.list_region[ rj_index ] 
                     
                     self.matric_pair[ri_index,rj_index] =  similarity_neighbor( ri,rj ,segmen ) 
+                    self.neighbor_matric[ri_index,rj_index] =  True
                 
                 
             
@@ -393,9 +399,7 @@ class selective_search():
             plt.imsave(path+"/segmen_{}.jpg".format(i),boundaries)
         
         os.mkdir(path+'_more')
-        for i in range (len(self.more)):
-            boundaries = mark_boundaries(cv2.cvtColor(image, cv2.COLOR_BGR2RGB),self.more[i])
-            plt.imsave(path+"_more/segmen_{}_more.jpg".format(i),boundaries)
+        
     
     def save_crop(self,image):
         currentDT = datetime.datetime.now()
