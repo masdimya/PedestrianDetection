@@ -34,13 +34,14 @@ class selective_search():
         '''
             felzenszwalb superpixel segmentation 
         '''
-#        self.segmen = felzenszwalb(image, scale = 1, sigma = 0.8, min_size = 600)
+        self.segmen = self.segmentation(image)
+        
         
         '''
             slic superpixel segmentation 
         '''
       
-        self.segmen = slic(image, n_segments = 4, compactness = 10, sigma = 1)
+#        self.segmen = slic(image, n_segments = 4, compactness = 10, sigma = 1)
         
         
         self.max_label = self.fix_label(self.segmen)
@@ -73,9 +74,24 @@ class selective_search():
         
         self.more_region(image,self.list_region)
         
-        self.save_boundaries(image)
-#        self.save_crop(image)
+        #self.save_boundaries(image)
         
+        self.save_label2rgb(image)
+#        self.save_crop(image)
+    
+    def segmentation(self,image):
+        
+        kondisi = True
+        min_size = 600
+        while kondisi :
+            seg = felzenszwalb(image, scale = 1, sigma = 0.8, min_size = min_size  )
+            
+            if seg.max() > 100 and seg.max() < 120 :
+                kondisi = False
+            else :
+                min_size += 200
+        return seg
+                
     
     def fix_label (self,segmen) :
         count_label = segmen.max()
@@ -341,7 +357,9 @@ class selective_search():
                     rj = self.list_region[ rj_index ] 
                     
                     self.matric_pair[ri_index,rj_index] =  similarity_neighbor( ri,rj ,segmen ) 
+                    
                     self.neighbor_matric[ri_index,rj_index] =  True
+                    self.neighbor_matric[rj_index,ri_index] =  True
                 
                 
             
@@ -396,6 +414,18 @@ class selective_search():
          
         for i in range (len(self.img_hierarchy)):
             boundaries = mark_boundaries(cv2.cvtColor(image, cv2.COLOR_BGR2RGB),self.img_hierarchy[i])
+            plt.imsave(path+"/segmen_{}.jpg".format(i),boundaries)
+        
+        os.mkdir(path+'_more')
+    
+    def save_label2rgb(self,image):
+        currentDT = datetime.datetime.now()
+        
+        path  = currentDT.strftime("%Y-%m-%d_%H.%M.%S")
+        os.mkdir(path)
+         
+        for i in range (len(self.img_hierarchy)):
+            boundaries = color.label2rgb(self.img_hierarchy[i])
             plt.imsave(path+"/segmen_{}.jpg".format(i),boundaries)
         
         os.mkdir(path+'_more')
