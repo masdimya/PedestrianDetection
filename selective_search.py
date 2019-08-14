@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 
 from skimage.segmentation import find_boundaries
 from skimage import measure, color
-from skimage.segmentation import  felzenszwalb, slic, mark_boundaries
+from skimage.segmentation import  felzenszwalb, mark_boundaries
 
 
 from similarity import similarity_neighbor
@@ -40,9 +40,6 @@ class selective_search():
         '''
             slic superpixel segmentation 
         '''
-      
-#        self.segmen = slic(image, n_segments = 4, compactness = 10, sigma = 1)
-        
         
         self.max_label = self.fix_label(self.segmen)
         
@@ -74,10 +71,13 @@ class selective_search():
         
         self.more_region(image,self.list_region)
         
-        #self.save_boundaries(image)
+        self.boundingbox = np.unique(self.boundingbox, axis = 0)
+        self.boundingbox = self.del_large_bbox(self.boundingbox)
         
-        self.save_label2rgb(image)
-#        self.save_crop(image)
+#        self.save_boundaries(image)
+        
+#        self.save_label2rgb(image)
+        self.save_crop(image)
     
     def segmentation(self,image):
         
@@ -114,8 +114,8 @@ class selective_search():
                     region.bbox[0]:region.bbox[2],
                     region.bbox[1]:region.bbox[3]]
             
-            list_bounding.append(region.bbox)
-            list_image.append(self.crop_image(image,region.bbox))
+            list_bounding.append(list(region.bbox))
+            #list_image.append(self.crop_image(image,region.bbox))
             r = Region(region.label,region.bbox,img_segmen,region.image)
             
             list_neighbor_pair = list_neighbor_pair + self.get_neighbor(segmen,r)
@@ -128,7 +128,7 @@ class selective_search():
         self.list_region = np.array(list_region)
         self.list_neighbor_pair = np.array(list_neighbor_pair)
         self.boundingbox = list_bounding
-        self.image_crop = list_image
+#        self.image_crop = list_image
         
         
         
@@ -346,7 +346,7 @@ class selective_search():
                 
                 self.list_region = np.append(self.list_region,r)
                 self.boundingbox.append(rt_bbox)
-                self.image_crop.append(self.crop_image(image,r.bbox))
+#                self.image_crop.append(self.crop_image(image,r.bbox))
                 
                 
                 for i in range(len(fast_rt_neighbor)):
@@ -395,16 +395,18 @@ class selective_search():
                 label = measure.label(new_seg)
                 
                 for new_region in measure.regionprops(label):
-                    self.image_crop.append(self.crop_image(image,new_region.bbox))
+#                    self.image_crop.append(self.crop_image(image,new_region.bbox))
                     self.boundingbox.append(new_region.bbox)
                 
-         
+    def del_large_bbox(self,bbox):
+        sizeimg = self.sizeImage[0] * self.sizeImage[1]
+        temp = []
+        for i in bbox :
+            area = (((i[2]-i[0]) * (i[3]-i[1]))/sizeimg) * 100
+            if area < 60:
+                temp.append(i)
+        return temp
             
-        
-        
-        
-        
-        
             
     def save_boundaries(self,image):
         currentDT = datetime.datetime.now()
@@ -437,9 +439,10 @@ class selective_search():
         path  = currentDT.strftime("%Y-%m-%d_%H.%M.%S")
         os.mkdir(path+'_crop')
          
-        for i in range (len(self.image_crop)):
-            image = cv2.cvtColor(self.image_crop[i], cv2.COLOR_BGR2RGB)
-            plt.imsave(path+"_crop/segmen{}.jpg".format(i),image)
+        for i in range (len(self.boundingbox)):
+            crop = self.crop_image(image,self.boundingbox[i])
+            rgb_img = cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
+            plt.imsave(path+"_crop/segmen{}.jpg".format(i),rgb_img)
 
         
     
