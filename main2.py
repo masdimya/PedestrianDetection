@@ -5,37 +5,27 @@ Created on Sat Apr 27 13:25:07 2019
 @author: user
 """
 
-import matplotlib.pyplot as plt
-import matplotlib.patches as mpatches
-import numpy as np
+
 import cv2
-import pandas as pd
-
-from skimage import measure, color
-from skimage.segmentation import  felzenszwalb,mark_boundaries, slic
 from selective_search import selective_search
-from cnn_model import cnn, cnn_keras
+#from cnn_model import cnn, cnn_keras
 
-from bbox_operator import like_nms, akurasi, akurasi2, merge_bb, evaluasi
-from saving import save_bbox,show_bbox,save_region
+#from bbox_operator import like_nms, akurasi, akurasi2, merge_bb, evaluasi
+from saving import save_bbox,show_bbox,save_region 
 
 
 
 conf = 3
 thres = 0.5
     
-nama = 'person_246'
-path = 'hasil/percobaan2/'
+nama = 'crop001512'
+path = 'coba_img/'
 
 
-#image = cv2.imread('image/' +nama+'.png')
-
-
-''' main '''
-
-print('hgdhgd')
-    
-#selective = selective_search(image)
+image = cv2.imread(path+nama+'.png')
+selective = selective_search(image)
+bbox = selective.boundingbox
+img = selective.image_crop()
 
 
 #for new image

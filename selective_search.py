@@ -31,6 +31,7 @@ class Region():
 class selective_search():
     def __init__(self,image):
         
+        self.image = image
         '''
             felzenszwalb superpixel segmentation 
         '''
@@ -55,7 +56,7 @@ class selective_search():
         self.list_region = []
         self.list_neighbor_pair = []
         self.boundingbox = []
-        self.image_crop = []
+        #self.image_crop = []
         
         
         
@@ -443,6 +444,14 @@ class selective_search():
             crop = self.crop_image(image,self.boundingbox[i])
             rgb_img = cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
             plt.imsave(path+"_crop/segmen{}.jpg".format(i),rgb_img)
+    
+    def image_crop(self):
+        list_img = list()
+        for i in range (len(self.boundingbox)):
+            crop = self.crop_image(self.image,self.boundingbox[i])
+            rgb_img = cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
+            list_img.append(rgb_img)
+        return list_img
 
         
     
